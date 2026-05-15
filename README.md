@@ -1,119 +1,37 @@
-# Distancia Tecnológica y Valor de la Innovación en Alianzas Universidad-Empresa
+# Scripts Auxiliares y Herramientas de Complemento
 
-Repositorio correspondiente a la tesis:
+Esta rama contiene una colección de herramientas especializadas y scripts de procesamiento de datos desarrollados para dar soporte a las ramas principales del proyecto. Aquí se agrupan utilidades para limpieza de bases de datos, filtrado de rankings y cálculos métricos específicos.
 
-> **“Experticia de los colaboradores de la alianza universidad–empresa y su efecto moderador en la relación entre la distancia tecnológica y el valor de la innovación conjunta.”**
+##  Índice de Herramientas
 
-Este proyecto analiza cómo la distancia tecnológica entre universidades y empresas afecta el valor de la innovación generada conjuntamente, incorporando además el efecto moderador de la experticia de los colaboradores y del stock acumulado de conocimiento tecnológico.
+### 1. Comparación de Perfiles Tecnológicos (DeTech)
+Script avanzado para medir la proximidad tecnológica entre conjuntos de datos.
+*   **Funcionalidad:** Extrae prefijos de códigos tecnológicos (Columna G) de archivos Excel particionados.
+*   **Métrica:** Calcula la distancia tecnológica mediante la fórmula:  
+    $$DeTech_{ij} = 1 - \cos(X_i, X_j)$$
+*   **Salida:** Genera comparativas individuales y un maestro consolidado (`detech_resumen.xlsx`).
 
----
+### 2. Limpieza de Registros Duplicados (Cruce de Bases)
+Herramienta de depuración para evitar redundancia entre bases de datos de distinto tamaño.
+*   **Lógica:** Toma una "Base Grande" y elimina automáticamente cualquier registro (por título) que ya se encuentre presente en una "Base Pequeña".
+*   **Uso común:** Consolidación de bases de datos tras procesos de recolección manual.
 
-# Objetivo de la investigación
+### 3. Filtro de Prestigio Universitario (Top 20 por Año)
+Script de validación histórica de instituciones.
+*   **Funcionalidad:** Cruza una base de datos con nombres de universidades y fechas frente a una base de referencia de rankings.
+*   **Criterio:** Solo conserva los registros donde la universidad pertenecía al **Top 20** en el año específico del registro. Los que no cumplen con este estándar de prestigio para esa fecha son eliminados.
 
-Evaluar la relación entre la distancia tecnológica y el valor de la innovación conjunta universidad–empresa, considerando:
-
-- El efecto no lineal de la distancia tecnológica.
-- El impacto del stock acumulado de patentes.
-- El efecto moderador de la experticia y experiencia tecnológica.
-- Diferencias entre universidades prestigiosas y no prestigiosas.
-
----
-
-# Contenido del repositorio
-
-El repositorio está organizado en diferentes ramas y módulos que contienen:
-
-## Hipótesis 1 — La distancia tecnológica tiene un efecto en forma de U invertida en el valor de la innovación conjunta Universidad–Empresa
-
-Análisis de la relación entre la distancia tecnológica (DeTech) y el valor de la innovación conjunta mediante modelos Binomial Negativa (NB2), incluyendo:
-
-- Modelos polinomiales.
-- Análisis de no linealidad.
-- Segmentación por prestigio universitario.
-- Pruebas de robustez.
-- Diagnósticos estadísticos.
+### 4. Extractor de Métricas de Inventores
+Analizador de colaboración en patentes.
+*   **Funcionalidad:** Procesa celdas que contienen múltiples nombres separados por punto y coma (`;`).
+*   **Resultado:** Devuelve el conteo exacto de inventores por cada entrada, facilitando el análisis de densidad de colaboración.
 
 ---
 
-## Hipótesis 2 — La experticia de los colaboradores de la alianza universidad–empresa tiene un efecto en el valor de la innovación conjunta. 
+## ⚙️ Requisitos del Entorno
+La mayoría de estos scripts están diseñados para ejecutarse en entornos Python 3.x con las siguientes librerías:
+*   `pandas` (Procesamiento de datos)
+*   `openpyxl` / `xlrd` (Lectura de Excel)
+*   `numpy` / `scipy` (Cálculos matemáticos y similitud de coseno)
 
-Evaluación del efecto del stock acumulado de patentes (TPI) sobre el valor de la innovación utilizando:
 
-- Modelos OLS.
-- Transformaciones Log-Log.
-- Modelos polinomiales.
-- Diagnósticos estadísticos.
-- Visualizaciones comparativas.
-
----
-
-## Hipótesis 3 — La experticia de los colaboradores de la alianza universidad–empresa modera la relación entre la distancia tecnológica y el valor de la innovación conjunta.
-
-Modelos de moderación para evaluar cómo la experticia y el stock tecnológico modifican la relación entre distancia tecnológica e innovación:
-
-- Modelos NB2 moderados.
-- Interacciones cuadráticas.
-- Segmentación Rank=1 vs Rank=0.
-- Comparación AIC/BIC.
-- Efectos marginales.
-
----
-
-## Procesamiento y construcción de datos
-
-Incluye scripts para:
-
-- Limpieza y filtrado de bases de datos.
-- Procesamiento de archivos Excel.
-- Eliminación de duplicados.
-- Identificación de universidades prestigiosas.
-- Conteo automático de inventores.
-- Comparación de perfiles tecnológicos.
-- Cálculo de distancia tecnológica (DeTech).
-
----
-
-# Metodología utilizada
-
-## Variables principales
-
-| Variable | Descripción |
-|---|---|
-| DeTech | Distancia tecnológica entre universidad y empresa |
-| ValorInc | Valor incremental de innovación |
-| TPI | Stock acumulado de patentes |
-| Experticia | Experiencia acumulada de colaboradores |
-| Rank | Indicador de universidad prestigiosa |
-| Inventores | Número de inventores asociados |
-
----
-
-## Métodos estadísticos
-
-Se utilizaron diferentes enfoques econométricos:
-
-- Regresión OLS.
-- Modelos Binomial Negativa NB2.
-- Modelos polinomiales.
-- Transformaciones Log-Log.
-- Modelos moderados.
-- Errores robustos HC3.
-- Comparaciones AIC/BIC.
-- Pseudo-R².
-- Pruebas RESET, White y Breusch-Pagan.
-
----
-
-# Tecnologías utilizadas
-
-## Lenguaje y librerías
-
-- Python
-- Pandas
-- NumPy
-- Statsmodels
-- Scikit-learn
-- Matplotlib
-- Seaborn
-- SciPy
-- OpenPyXL
