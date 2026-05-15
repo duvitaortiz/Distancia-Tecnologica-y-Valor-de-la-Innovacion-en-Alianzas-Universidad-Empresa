@@ -1,0 +1,836 @@
+
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.discrete.discrete_model import NegativeBinomial
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.patches as mpatches
+import seaborn as sns
+from scipy import stats
+import warnings
+import os
+
+warnings.filterwarnings('ignore')
+
+# ─── Estilo global ────────────────────────────────────────────────────────────
+plt.rcParams.update({
+    'font.family'      : 'serif',
+    'font.size'        : 11,
+    'axes.titlesize'   : 12,
+    'axes.labelsize'   : 11,
+    'xtick.labelsize'  : 10,
+    'ytick.labelsize'  : 10,
+    'axes.spines.top'  : False,
+    'axes.spines.right': False,
+    'figure.dpi'       : 150,
+    'savefig.dpi'      : 150,
+    'savefig.bbox'     : 'tight',
+    'axes.grid'        : True,
+    'grid.alpha'       : 0.25,
+    'grid.linestyle'   : '--',
+})
+
+PAL = {
+    'base'    : '#2C3E50',
+    'bajo'    : '#2980B9',
+    'medio'   : '#27AE60',
+    'alto'    : '#C0392B',
+    'rank1'   : '#8E44AD',
+    'rank0'   : '#D35400',
+    'neutro'  : '#7F8C8D',
+    'amarillo': '#F39C12',
+}
+
+OUTPUT = "graficas_nb2_moderador"
+os.makedirs(OUTPUT, exist_ok=True)
+
+# =============================================================================
+# 1. CARGA Y PREPARACIÓN
+# =============================================================================
+print("=" * 70)
+print("1. CARGA Y PREPARACIÓN DE DATOS")
+print("=" * 70)
+
+ruta = "/content/ruta.xlsx"
+df   = pd.read_excel(ruta, sheet_name="Matriz 1_")
+
+df = df.rename(columns={
+    'Detech'         : 'DeTech',
+    'Exprt. Conjunta': 'Experticia',
+    '# de inventores': 'Inventores',
+    'ValorInc'       : 'ValorInc',
+    'Rank'           : 'Rank',
+})
+
+# Stock total de patentes del equipo (NaN → 0)
+inventor_cols = [f'Inventor {i}' for i in range(1, 28)]
+df[inventor_cols] = df[inventor_cols].fillna(0)
+df['SumPatents']  = df[inventor_cols].sum(axis=1)
+
+# =============================================================================
+# 2. TRANSFORMACIONES Y CENTRADO
+# =============================================================================
+df['SumLog']    = np.log1p(df['SumPatents'])          # log(1 + SumPatents)
+df['SumLog_sq'] = df['SumLog'] ** 2
+
+# Centrado (reduce multicolinealidad en polinomios)
+df['DeTech_c']     = df['DeTech']  - df['DeTech'].mean()
+df['DeTech_c_sq']  = df['DeTech_c'] ** 2
+df['SumLog_c']     = df['SumLog']  - df['SumLog'].mean()
+df['SumLog_c_sq']  = df['SumLog_c'] ** 2
+df['Interaction']  = df['DeTech_c'] * df['SumLog_c']
+
+vars_modelo = [
+    'ValorInc', 'DeTech_c', 'DeTech_c_sq',
+    'Rank', 'Experticia', 'Inventores',
+    'SumLog_c', 'SumLog_c_sq', 'Interaction'
+]
+df_modelo = df[vars_modelo].dropna().copy()
+
+print(f"\n  Muestra final: n = {len(df_modelo)}")
+print(f"  Media DeTech       : {df['DeTech'].mean():.4f}")
+print(f"  Media SumLog       : {df['SumLog'].mean():.4f}  "
+      f"[equiv. SumPatents ≈ {np.expm1(df['SumLog'].mean()):.1f}]")
+print(f"  Rango ValorInc     : [{df_modelo['ValorInc'].min()}, "
+      f"{df_modelo['ValorInc'].max()}]")
+print(f"  % Rank=1           : {df_modelo['Rank'].mean()*100:.1f}%")
+
+# Estadísticas descriptivas
+print("\n  Estadísticas descriptivas:")
+print(df_modelo[['ValorInc','DeTech_c','SumLog_c','Experticia','Inventores']
+                ].describe().round(3).to_string())
+
+# =============================================================================
+# 3. FUNCIÓN NB2
+# =============================================================================
+def estimar_nb2(y, X, metodo='bfgs'):
+    model = NegativeBinomial(y, X, loglike_method='nb2')
+    res   = model.fit(method=metodo, maxiter=5000, disp=0)
+    return res
+
+# =============================================================================
+# 4. MODELOS BASE (sin moderador)
+# =============================================================================
+print("\n" + "=" * 70)
+print("4. MODELOS BASE (SIN MODERADOR)")
+print("=" * 70)
+
+def modelo_base(data, segmento):
+    y = data['ValorInc']
+    X = sm.add_constant(data[['DeTech_c','DeTech_c_sq',
+                               'Experticia','Inventores']])
+    if segmento == 'Completa':
+        X = X.copy(); X['Rank'] = data['Rank']
+    res = estimar_nb2(y, X)
+    print(f"\n  [{segmento}]  n={len(data)}  "
+          f"AIC={res.aic:.1f}  alpha={res.params.get('alpha',np.nan):.4f}")
+    return res
+
+base_all = modelo_base(df_modelo,                          'Completa')
+base_r1  = modelo_base(df_modelo[df_modelo['Rank']==1],    'Rank=1')
+base_r0  = modelo_base(df_modelo[df_modelo['Rank']==0],    'Rank=0')
+
+# =============================================================================
+# 5. MODELOS MODERADOS (polinomio log-log)
+# =============================================================================
+print("\n" + "=" * 70)
+print("5. MODELOS MODERADOS (POLINOMIO LOG-LOG)")
+print("=" * 70)
+
+resultados = []
+
+def correr_modelo(data, segmento):
+    y = data['ValorInc']
+    X = sm.add_constant(data[['DeTech_c','DeTech_c_sq',
+                               'Experticia','Inventores',
+                               'SumLog_c','SumLog_c_sq','Interaction']])
+    if segmento == 'Completa':
+        X = X.copy(); X['Rank'] = data['Rank']
+    res = estimar_nb2(y, X)
+    print(f"\n  [{segmento}]")
+    print(res.summary2(float_format="%.4f"))
+    resultados.append({
+        'Segmento'         : segmento,
+        'n'                : len(data),
+        'Coef DeTech'      : res.params.get('DeTech_c', np.nan),
+        'p DeTech'         : res.pvalues.get('DeTech_c', np.nan),
+        'Coef DeTech²'     : res.params.get('DeTech_c_sq', np.nan),
+        'p DeTech²'        : res.pvalues.get('DeTech_c_sq', np.nan),
+        'Coef SumLog'      : res.params.get('SumLog_c', np.nan),
+        'p SumLog'         : res.pvalues.get('SumLog_c', np.nan),
+        'Coef SumLog²'     : res.params.get('SumLog_c_sq', np.nan),
+        'p SumLog²'        : res.pvalues.get('SumLog_c_sq', np.nan),
+        'Coef Interacción' : res.params.get('Interaction', np.nan),
+        'p Interacción'    : res.pvalues.get('Interaction', np.nan),
+        'alpha'            : res.params.get('alpha', np.nan),
+        'AIC'              : res.aic,
+        'BIC'              : res.bic,
+        'Pseudo-R²'        : res.prsquared,
+        'Log-Lik'          : res.llf,
+    })
+    return res
+
+mod_all = correr_modelo(df_modelo,                         'Completa')
+mod_r1  = correr_modelo(df_modelo[df_modelo['Rank']==1],   'Rank=1')
+mod_r0  = correr_modelo(df_modelo[df_modelo['Rank']==0],   'Rank=0')
+
+# =============================================================================
+# 6. TABLA COMPARATIVA PARA PAPER
+# =============================================================================
+print("\n" + "=" * 70)
+print("6. TABLA COMPARATIVA — FORMATO PAPER")
+print("=" * 70)
+
+def stars(p):
+    if p < 0.01: return '***'
+    if p < 0.05: return '**'
+    if p < 0.10: return '*'
+    return ''
+
+tabla = pd.DataFrame(resultados)
+
+print(f"\n{'Variable':<22} {'Completa':>14} {'Rank=1':>14} {'Rank=0':>14}")
+print("─" * 66)
+
+vars_show = [
+    ('DeTech_c',    'Coef DeTech',     'p DeTech'),
+    ('DeTech_c_sq', 'Coef DeTech²',    'p DeTech²'),
+    ('SumLog_c',    'Coef SumLog',     'p SumLog'),
+    ('SumLog_c_sq', 'Coef SumLog²',    'p SumLog²'),
+    ('Interaction', 'Coef Interacción','p Interacción'),
+]
+
+for _, coef_col, p_col in vars_show:
+    row_str = f"  {coef_col:<20}"
+    for _, row in tabla.iterrows():
+        c = row[coef_col]; p = row[p_col]
+        row_str += f"  {c:>8.4f}{stars(p):<3}"
+    print(row_str)
+
+print("─" * 66)
+for metric in ['alpha','AIC','BIC','Pseudo-R²','n']:
+    row_str = f"  {metric:<20}"
+    for _, row in tabla.iterrows():
+        v = row.get(metric, np.nan)
+        row_str += f"  {v:>11.4f}"
+    print(row_str)
+
+print("\n  Nota: SE robustos. * p<0.10  ** p<0.05  *** p<0.01")
+print("  Método: NB2, MLE. Variables centradas en su media muestral.")
+
+# =============================================================================
+# 7. TABLA COMPARATIVA BASE vs MODERADO
+# =============================================================================
+print("\n" + "=" * 70)
+print("7. COMPARATIVA AIC/BIC — BASE vs MODERADO")
+print("=" * 70)
+
+comp_rows = []
+for seg, bmod, mmod, data in [
+    ('Completa', base_all, mod_all, df_modelo),
+    ('Rank=1',   base_r1,  mod_r1,  df_modelo[df_modelo['Rank']==1]),
+    ('Rank=0',   base_r0,  mod_r0,  df_modelo[df_modelo['Rank']==0]),
+]:
+    comp_rows.append({
+        'Segmento'       : seg,
+        'n'              : len(data),
+        'AIC Base'       : bmod.aic,
+        'AIC Moderado'   : mmod.aic,
+        'ΔAIC'           : mmod.aic - bmod.aic,
+        'BIC Base'       : bmod.bic,
+        'BIC Moderado'   : mmod.bic,
+        'ΔBIC'           : mmod.bic - bmod.bic,
+        'LLR p-valor'    : mmod.llr_pvalue,
+    })
+
+df_comp = pd.DataFrame(comp_rows)
+print(df_comp.round(3).to_string(index=False))
+print("\n  ΔAIC < 0 → el modelo moderado mejora el ajuste")
+
+
+# =============================================================================
+#   VISUALIZACIONES — 10 FIGURAS
+# =============================================================================
+
+# Grilla y medianas compartidas
+grid      = np.linspace(df_modelo['DeTech_c'].min(),
+                        df_modelo['DeTech_c'].max(), 200)
+med_exp   = df_modelo['Experticia'].median()
+med_inv   = df_modelo['Inventores'].median()
+
+p25 = df_modelo['SumLog_c'].quantile(0.25)
+p50 = df_modelo['SumLog_c'].median()
+p75 = df_modelo['SumLog_c'].quantile(0.75)
+
+# Etiquetas del moderador para las leyendas
+SumLog_mean = df['SumLog'].mean()
+lbl = {
+    p25: f"Bajo  (≈{np.expm1(p25+SumLog_mean):.0f} pat.)",
+    p50: f"Medio (≈{np.expm1(p50+SumLog_mean):.0f} pat.)",
+    p75: f"Alto  (≈{np.expm1(p75+SumLog_mean):.0f} pat.)",
+}
+colores_mod = {p25: PAL['bajo'], p50: PAL['medio'], p75: PAL['alto']}
+
+
+def predecir_base(base_model, rank_val=None):
+    Xb = pd.DataFrame({
+        'DeTech_c'    : grid,
+        'DeTech_c_sq' : grid**2,
+        'Experticia'  : med_exp,
+        'Inventores'  : med_inv,
+    })
+    if rank_val is not None:
+        Xb['Rank'] = rank_val
+    Xb = sm.add_constant(Xb, has_constant='add')
+    mu = base_model.predict(Xb)
+    return np.clip(mu, 0, np.percentile(mu, 99))
+
+
+def predecir_mod(mod_model, val_log_c, rank_val=None):
+    Xm = pd.DataFrame({
+        'DeTech_c'    : grid,
+        'DeTech_c_sq' : grid**2,
+        'Experticia'  : med_exp,
+        'Inventores'  : med_inv,
+        'SumLog_c'    : val_log_c,
+        'SumLog_c_sq' : val_log_c**2,
+        'Interaction' : grid * val_log_c,
+    })
+    if rank_val is not None:
+        Xm['Rank'] = rank_val
+    Xm = sm.add_constant(Xm, has_constant='add')
+    mu = mod_model.predict(Xm)
+    return np.clip(mu, 0, np.percentile(mu, 99))
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 1: Descriptivos — distribuciones clave (2×2)
+# ──────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(2, 2, figsize=(13, 9))
+fig.suptitle("Distribución de Variables Principales",
+             fontsize=13, fontweight='bold')
+
+# ValorInc
+axes[0,0].hist(df_modelo['ValorInc'], bins=40, color=PAL['base'],
+               edgecolor='white', alpha=0.85)
+axes[0,0].set_title("ValorInc (variable dependiente)")
+axes[0,0].set_xlabel("ValorInc")
+axes[0,0].set_ylabel("Frecuencia")
+axes[0,0].axvline(df_modelo['ValorInc'].mean(),   color=PAL['alto'], lw=1.8,
+                  linestyle='--', label=f"Media={df_modelo['ValorInc'].mean():.1f}")
+axes[0,0].axvline(df_modelo['ValorInc'].median(), color=PAL['neutro'], lw=1.8,
+                  linestyle=':', label=f"Med={df_modelo['ValorInc'].median():.1f}")
+axes[0,0].legend(fontsize=9)
+
+# DeTech
+axes[0,1].hist(df_modelo['DeTech_c'] + df['DeTech'].mean(), bins=30,
+               color=PAL['bajo'], edgecolor='white', alpha=0.85)
+axes[0,1].set_title("DeTech (diversificación tecnológica)")
+axes[0,1].set_xlabel("DeTech")
+axes[0,1].set_ylabel("Frecuencia")
+axes[0,1].axvline(df['DeTech'].mean(), color='black', lw=1.5,
+                  linestyle='--', label=f"Media={df['DeTech'].mean():.3f}")
+axes[0,1].legend(fontsize=9)
+
+# SumLog (moderador)
+SumLog_orig = df_modelo['SumLog_c'] + SumLog_mean
+axes[1,0].hist(SumLog_orig, bins=35, color=PAL['medio'],
+               edgecolor='white', alpha=0.85)
+axes[1,0].set_title("log(Stock Patentes + 1) — Moderador")
+axes[1,0].set_xlabel("log(SumPatents + 1)")
+axes[1,0].set_ylabel("Frecuencia")
+for q, col, lbl_q in [(0.25, PAL['bajo'], 'P25'),
+                       (0.50, 'black', 'Mediana'),
+                       (0.75, PAL['alto'], 'P75')]:
+    v = df_modelo['SumLog_c'].quantile(q) + SumLog_mean
+    axes[1,0].axvline(v, color=col, lw=1.5, linestyle='--', label=f"{lbl_q}={v:.2f}")
+axes[1,0].legend(fontsize=9)
+
+# Scatter DeTech vs ValorInc coloreado por Rank
+for rv, col, etq in [(0, PAL['rank0'], 'Rank=0'), (1, PAL['rank1'], 'Rank=1')]:
+    sub = df_modelo[df_modelo['Rank']==rv]
+    axes[1,1].scatter(sub['DeTech_c'] + df['DeTech'].mean(),
+                      sub['ValorInc'],
+                      c=col, alpha=0.45, s=28, edgecolors='none',
+                      label=f"{etq} (n={len(sub)})")
+axes[1,1].set_title("ValorInc vs DeTech por Prestigio")
+axes[1,1].set_xlabel("DeTech"); axes[1,1].set_ylabel("ValorInc")
+axes[1,1].legend(fontsize=9)
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig1_descriptivos.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig1_descriptivos.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 2: Heatmap de correlación
+# ──────────────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(8, 6))
+corr_vars = ['ValorInc','DeTech_c','DeTech_c_sq',
+             'SumLog_c','SumLog_c_sq','Interaction','Inventores','Experticia']
+corr_m = df_modelo[corr_vars].corr()
+mask   = np.triu(np.ones_like(corr_m, dtype=bool), k=1)
+sns.heatmap(corr_m, ax=ax, annot=True, fmt=".2f", cmap='RdBu_r',
+            center=0, vmin=-1, vmax=1, linewidths=0.4,
+            annot_kws={"size": 9}, mask=False)
+ax.set_title("Matriz de Correlación de Variables del Modelo",
+             fontsize=12, fontweight='bold')
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig2_correlacion.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig2_correlacion.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 3: Efecto del moderador — Muestra completa
+# ──────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig.suptitle("Modelo Moderado — Muestra Completa",
+             fontsize=13, fontweight='bold')
+
+DeTech_orig = grid + df['DeTech'].mean()
+
+# Panel izquierdo: base vs moderado
+ax = axes[0]
+mu_base_all = predecir_base(base_all, rank_val=None)
+ax.plot(DeTech_orig, mu_base_all, color=PAL['base'], lw=2.5,
+        linestyle='--', label='Base (sin moderador)', zorder=4)
+for val in [p25, p50, p75]:
+    mu = predecir_mod(mod_all, val, rank_val=None)
+    ax.plot(DeTech_orig, mu, color=colores_mod[val], lw=2, label=lbl[val])
+ax.set_xlabel("DeTech"); ax.set_ylabel("Valor esperado (μ̂)")
+ax.set_title("Curvas: Base vs Moderado por nivel de stock")
+ax.legend(fontsize=9)
+
+# Panel derecho: diferencia respecto al nivel medio del moderador
+ax = axes[1]
+mu_medio = predecir_mod(mod_all, p50, rank_val=None)
+for val, etq in [(p25, 'Bajo'), (p75, 'Alto')]:
+    mu = predecir_mod(mod_all, val, rank_val=None)
+    diff = mu - mu_medio
+    ax.plot(DeTech_orig, diff, color=colores_mod[val], lw=2,
+            label=f"{etq} − Medio")
+ax.axhline(0, color='black', lw=0.9)
+ax.fill_between(DeTech_orig,
+                predecir_mod(mod_all, p25) - mu_medio,
+                predecir_mod(mod_all, p75) - mu_medio,
+                alpha=0.10, color=PAL['neutro'])
+ax.set_xlabel("DeTech"); ax.set_ylabel("Δμ̂ respecto al nivel medio")
+ax.set_title("Diferencia en curvas predichas (Bajo/Alto − Medio)")
+ax.legend(fontsize=9)
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig3_moderacion_completa.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig3_moderacion_completa.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 4: Curvas — RANK=1 (Prestigiosas) — panel separado
+# ──────────────────────────────────────────────────────────────────
+n_r1 = (df_modelo['Rank']==1).sum()
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig.suptitle(f"Universidades PRESTIGIOSAS (Rank=1, n={n_r1})",
+             fontsize=13, fontweight='bold')
+
+ax = axes[0]
+mu_base_r1 = predecir_base(base_r1, rank_val=1)
+ax.plot(DeTech_orig, mu_base_r1, color=PAL['base'], lw=2.5,
+        linestyle='--', label='Base (sin moderador)')
+for val in [p25, p50, p75]:
+    mu = predecir_mod(mod_r1, val, rank_val=1)
+    ax.plot(DeTech_orig, mu, color=colores_mod[val], lw=2, label=lbl[val])
+ax.set_xlabel("DeTech"); ax.set_ylabel("Valor esperado (μ̂)")
+ax.set_title("Curvas predichas — Rank=1")
+ax.legend(fontsize=9)
+
+# Dispersión de datos Rank=1
+ax = axes[1]
+sub_r1 = df_modelo[df_modelo['Rank']==1]
+sc = ax.scatter(sub_r1['DeTech_c'] + df['DeTech'].mean(),
+                sub_r1['ValorInc'],
+                c=sub_r1['SumLog_c'], cmap='RdYlBu_r',
+                alpha=0.7, s=60, edgecolors='white', lw=0.5)
+plt.colorbar(sc, ax=ax, label='SumLog_c (moderador centrado)')
+# Curva al nivel medio del moderador
+mu_r1_med = predecir_mod(mod_r1, p50, rank_val=1)
+ax.plot(DeTech_orig, mu_r1_med, color='black', lw=2,
+        linestyle='--', label='Curva (mod. medio)')
+ax.set_xlabel("DeTech"); ax.set_ylabel("ValorInc")
+ax.set_title("Datos observados coloreados por SumLog")
+ax.legend(fontsize=9)
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig4_rank1_prestigiosas.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig4_rank1_prestigiosas.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 5: Curvas — RANK=0 (No prestigiosas) — panel separado
+# ──────────────────────────────────────────────────────────────────
+n_r0 = (df_modelo['Rank']==0).sum()
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig.suptitle(f"Universidades NO PRESTIGIOSAS (Rank=0, n={n_r0})",
+             fontsize=13, fontweight='bold')
+
+ax = axes[0]
+mu_base_r0 = predecir_base(base_r0, rank_val=0)
+ax.plot(DeTech_orig, mu_base_r0, color=PAL['base'], lw=2.5,
+        linestyle='--', label='Base (sin moderador)')
+for val in [p25, p50, p75]:
+    mu = predecir_mod(mod_r0, val, rank_val=0)
+    ax.plot(DeTech_orig, mu, color=colores_mod[val], lw=2, label=lbl[val])
+ax.set_xlabel("DeTech"); ax.set_ylabel("Valor esperado (μ̂)")
+ax.set_title("Curvas predichas — Rank=0")
+ax.legend(fontsize=9)
+
+ax = axes[1]
+sub_r0 = df_modelo[df_modelo['Rank']==0]
+sc = ax.scatter(sub_r0['DeTech_c'] + df['DeTech'].mean(),
+                sub_r0['ValorInc'],
+                c=sub_r0['SumLog_c'], cmap='RdYlBu_r',
+                alpha=0.45, s=30, edgecolors='none')
+plt.colorbar(sc, ax=ax, label='SumLog_c (moderador centrado)')
+mu_r0_med = predecir_mod(mod_r0, p50, rank_val=0)
+ax.plot(DeTech_orig, mu_r0_med, color='black', lw=2,
+        linestyle='--', label='Curva (mod. medio)')
+ax.set_xlabel("DeTech"); ax.set_ylabel("ValorInc")
+ax.set_title("Datos observados coloreados por SumLog")
+ax.legend(fontsize=9)
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig5_rank0_no_prestigiosas.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig5_rank0_no_prestigiosas.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 6: Comparativa de los tres segmentos — nivel ALTO del mod.
+# ──────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+fig.suptitle("Comparativa Base vs Moderado — Tres Segmentos",
+             fontsize=13, fontweight='bold')
+
+configs = [
+    (axes[0], base_all, mod_all, None,  "Muestra Completa", PAL['base']),
+    (axes[1], base_r1,  mod_r1,  1,     "Rank=1 (Prestigiosas)", PAL['rank1']),
+    (axes[2], base_r0,  mod_r0,  0,     "Rank=0 (No Prestigiosas)", PAL['rank0']),
+]
+
+for ax, bmod, mmod, rv, titulo, color in configs:
+    mu_b = predecir_base(bmod, rank_val=rv)
+    ax.plot(DeTech_orig, mu_b, color='black', lw=2,
+            linestyle='--', label='Base')
+    for val in [p25, p50, p75]:
+        mu = predecir_mod(mmod, val, rank_val=rv)
+        ax.plot(DeTech_orig, mu, color=colores_mod[val], lw=1.8,
+                label=lbl[val])
+    ax.set_title(titulo, color=color, fontweight='bold')
+    ax.set_xlabel("DeTech")
+    ax.set_ylabel("Valor esperado (μ̂)")
+    ax.legend(fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig6_comparativa_segmentos.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig6_comparativa_segmentos.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 7: Efecto marginal del moderador sobre la relación DeTech-ValorInc
+# ──────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+fig.suptitle("Efecto Marginal de DeTech según Nivel del Moderador",
+             fontsize=13, fontweight='bold')
+
+SumLog_c_range = np.linspace(df_modelo['SumLog_c'].min(),
+                              df_modelo['SumLog_c'].max(), 100)
+
+configs7 = [
+    (axes[0], mod_all, None,  "Muestra Completa"),
+    (axes[1], mod_r1,  1,     "Rank=1"),
+    (axes[2], mod_r0,  0,     "Rank=0"),
+]
+
+for ax, mmod, rv, titulo in configs7:
+    # El efecto marginal en NB2 es aproximado como la derivada de log(μ)
+    # respecto a DeTech_c evaluada en la media de DeTech_c=0 (centrado)
+    b1  = mmod.params.get('DeTech_c',   0)
+    b2  = mmod.params.get('DeTech_c_sq',0)
+    b_i = mmod.params.get('Interaction',0)
+    # Efecto marginal en DeTech=media (grid=0): b1 + b_i * SumLog_c
+    em = b1 + b_i * SumLog_c_range
+    SumLog_orig_range = SumLog_c_range + SumLog_mean
+    ax.plot(SumLog_orig_range, em, color=PAL['base'], lw=2.5)
+    ax.axhline(0, color=PAL['alto'], lw=1.3, linestyle='--',
+               label='Efecto = 0')
+    ax.fill_between(SumLog_orig_range, em, 0,
+                    where=(em > 0), color=PAL['medio'], alpha=0.2,
+                    label='Positivo')
+    ax.fill_between(SumLog_orig_range, em, 0,
+                    where=(em <= 0), color=PAL['alto'], alpha=0.2,
+                    label='Negativo')
+    # Punto de cruce
+    if b_i != 0:
+        cruce_c = -b1 / b_i
+        cruce_orig = cruce_c + SumLog_mean
+        if (SumLog_c_range.min() < cruce_c < SumLog_c_range.max()):
+            ax.axvline(cruce_orig, color='black', lw=1.5, linestyle=':',
+                       label=f'Cruce ≈{cruce_orig:.2f}')
+    ax.set_title(titulo)
+    ax.set_xlabel("log(SumPatents+1)")
+    ax.set_ylabel("Efecto marginal de DeTech (en media)")
+    ax.legend(fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig7_efecto_marginal.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig7_efecto_marginal.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 8: Dispersión de ValorInc por cuartil de SumLog y Rank (barras)
+# ──────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig.suptitle("Distribución de ValorInc por Cuartil de Stock de Patentes",
+             fontsize=13, fontweight='bold')
+
+df_modelo['Q_SumLog'] = pd.qcut(df_modelo['SumLog_c'], q=4,
+                                  labels=['Q1','Q2','Q3','Q4'],
+                                  duplicates='drop')
+
+est_q = df_modelo.groupby('Q_SumLog', observed=True)['ValorInc'].agg(
+    ['mean','std','count','median'])
+est_q['se'] = est_q['std'] / np.sqrt(est_q['count'])
+
+colors_q = plt.cm.Blues(np.linspace(0.35, 0.85, len(est_q)))
+
+ax = axes[0]
+bars = ax.bar(range(len(est_q)), est_q['mean'],
+              yerr=est_q['se']*1.96, color=colors_q,
+              edgecolor='white', capsize=4)
+ax.set_xticks(range(len(est_q)))
+ax.set_xticklabels(est_q.index)
+ax.set_xlabel("Cuartil de log(SumPatents+1)")
+ax.set_ylabel("Media de ValorInc")
+ax.set_title("Media ± IC 95% por cuartil del moderador")
+for bar, (_, row) in zip(bars, est_q.iterrows()):
+    ax.text(bar.get_x() + bar.get_width()/2,
+            bar.get_height() + row['se']*1.96 + 0.2,
+            f"n={int(row['count'])}", ha='center', fontsize=9, color='gray')
+
+ax = axes[1]
+df_cross = df_modelo.groupby(['Q_SumLog','Rank'], observed=True
+                              )['ValorInc'].mean().unstack()
+df_cross.columns = ['No Prestigiosa','Prestigiosa']
+x     = np.arange(len(df_cross))
+width = 0.35
+ax.bar(x-width/2, df_cross['No Prestigiosa'], width,
+       label='No Prestigiosa', color=PAL['rank0'], alpha=0.85, edgecolor='white')
+ax.bar(x+width/2, df_cross.get('Prestigiosa', 0), width,
+       label='Prestigiosa', color=PAL['rank1'], alpha=0.85, edgecolor='white')
+ax.set_xticks(x); ax.set_xticklabels(df_cross.index)
+ax.set_xlabel("Cuartil de log(SumPatents+1)")
+ax.set_ylabel("Media de ValorInc")
+ax.set_title("Media ValorInc por cuartil y tipo de universidad")
+ax.legend()
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig8_barras_cuartiles.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig8_barras_cuartiles.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 9: Diagnóstico de residuos — modelo completo moderado
+# ──────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+fig.suptitle("Diagnóstico de Residuos — Modelo Moderado Completo",
+             fontsize=13, fontweight='bold')
+
+resid_p = mod_all.resid_pearson
+fitted  = mod_all.predict()
+
+ax = axes[0]
+ax.scatter(fitted, resid_p, color=PAL['base'], alpha=0.45,
+           s=28, edgecolors='none')
+ax.axhline(0, color=PAL['alto'], lw=1.8, linestyle='--')
+ax.axhline(3, color=PAL['neutro'], lw=1.2, linestyle=':',
+           label='±3 (outlier)')
+ax.axhline(-3, color=PAL['neutro'], lw=1.2, linestyle=':')
+n_out = (np.abs(resid_p) > 3).sum()
+ax.set_xlabel("Valor ajustado (μ̂)")
+ax.set_ylabel("Residuo de Pearson")
+ax.set_title(f"Residuos vs Ajustados (outliers: {n_out})")
+ax.legend(fontsize=9)
+
+ax = axes[1]
+ax.hist(resid_p, bins=35, color=PAL['base'], edgecolor='white',
+        alpha=0.85, density=True)
+xr = np.linspace(resid_p.min(), resid_p.max(), 200)
+ax.plot(xr, stats.norm.pdf(xr, resid_p.mean(), resid_p.std()),
+        color=PAL['alto'], lw=2, label='Normal teórica')
+ax.set_xlabel("Residuo de Pearson")
+ax.set_ylabel("Densidad")
+ax.set_title("Distribución de Residuos de Pearson")
+ax.legend(fontsize=9)
+
+ax = axes[2]
+(osm, osr), (slope, intercept, _) = stats.probplot(resid_p, dist='norm')
+ax.scatter(osm, osr, color=PAL['base'], alpha=0.5, s=28, edgecolors='none')
+xqq = np.array([min(osm), max(osm)])
+ax.plot(xqq, slope*xqq + intercept, color=PAL['alto'], lw=2)
+ax.set_xlabel("Cuantiles teóricos")
+ax.set_ylabel("Cuantiles observados")
+ax.set_title("Q-Q Plot de Residuos de Pearson")
+
+plt.tight_layout()
+plt.savefig(f"{OUTPUT}/fig9_diagnostico_residuos.png")
+plt.show()
+print(f"✓ {OUTPUT}/fig9_diagnostico_residuos.png")
+
+
+# ──────────────────────────────────────────────────────────────────
+# FIGURA 10: Panel resumen (dashboard 2×3)
+# ──────────────────────────────────────────────────────────────────
+fig = plt.figure(figsize=(18, 10))
+gs  = gridspec.GridSpec(2, 3, figure=fig, hspace=0.45, wspace=0.38)
+fig.suptitle("Panel Resumen: NB2 con Moderador Polinomial Log-Log",
+             fontsize=14, fontweight='bold')
+
+# A — ValorInc por Rank
+ax_a = fig.add_subplot(gs[0,0])
+for rv, col, etq in [(0,PAL['rank0'],'Rank=0'),(1,PAL['rank1'],'Rank=1')]:
+    sub = df_modelo[df_modelo['Rank']==rv]['ValorInc']
+    ax_a.hist(sub, bins=25, color=col, alpha=0.6, edgecolor='white',
+              label=f"{etq} (med={sub.median():.1f})")
+ax_a.set_title("A. ValorInc por Prestigio")
+ax_a.set_xlabel("ValorInc"); ax_a.legend(fontsize=9)
+
+# B — Curvas completas
+ax_b = fig.add_subplot(gs[0,1])
+ax_b.plot(DeTech_orig, predecir_base(base_all), color='black',
+          lw=2, linestyle='--', label='Base')
+for val in [p25,p50,p75]:
+    ax_b.plot(DeTech_orig, predecir_mod(mod_all, val),
+              color=colores_mod[val], lw=1.8, label=lbl[val].split('(')[0])
+ax_b.set_title("B. Curvas — Muestra Completa")
+ax_b.set_xlabel("DeTech"); ax_b.legend(fontsize=8)
+
+# C — Curvas Rank=1
+ax_c = fig.add_subplot(gs[0,2])
+ax_c.plot(DeTech_orig, predecir_base(base_r1, 1), color='black',
+          lw=2, linestyle='--', label='Base')
+for val in [p25,p50,p75]:
+    ax_c.plot(DeTech_orig, predecir_mod(mod_r1, val, 1),
+              color=colores_mod[val], lw=1.8)
+ax_c.set_title("C. Curvas — Rank=1")
+ax_c.set_xlabel("DeTech"); ax_c.set_ylabel("μ̂")
+
+# D — Curvas Rank=0
+ax_d = fig.add_subplot(gs[1,0])
+ax_d.plot(DeTech_orig, predecir_base(base_r0, 0), color='black',
+          lw=2, linestyle='--', label='Base')
+for val in [p25,p50,p75]:
+    ax_d.plot(DeTech_orig, predecir_mod(mod_r0, val, 0),
+              color=colores_mod[val], lw=1.8)
+ax_d.set_title("D. Curvas — Rank=0")
+ax_d.set_xlabel("DeTech"); ax_d.set_ylabel("μ̂")
+
+# E — Barras cuartiles
+ax_e = fig.add_subplot(gs[1,1])
+ax_e.bar(range(len(est_q)), est_q['mean'],
+         color=plt.cm.Blues(np.linspace(0.35,0.85,len(est_q))),
+         edgecolor='white')
+ax_e.set_xticks(range(len(est_q)))
+ax_e.set_xticklabels(est_q.index)
+ax_e.set_title("E. Media ValorInc por Q(SumLog)")
+ax_e.set_xlabel("Cuartil"); ax_e.set_ylabel("Media ValorInc")
+
+# F — Residuos vs ajustados
+ax_f = fig.add_subplot(gs[1,2])
+ax_f.scatter(fitted, resid_p, color=PAL['base'], alpha=0.4,
+             s=18, edgecolors='none')
+ax_f.axhline(0, color=PAL['alto'], lw=1.5, linestyle='--')
+ax_f.axhline(3, color=PAL['neutro'], lw=1, linestyle=':')
+ax_f.axhline(-3, color=PAL['neutro'], lw=1, linestyle=':')
+ax_f.set_title("F. Residuos Pearson vs μ̂")
+ax_f.set_xlabel("μ̂"); ax_f.set_ylabel("Residuo Pearson")
+
+plt.savefig(f"{OUTPUT}/fig10_panel_resumen.png", dpi=150, bbox_inches='tight')
+plt.show()
+print(f"✓ {OUTPUT}/fig10_panel_resumen.png")
+
+
+# =============================================================================
+# 8. TABLA RESUMEN FINAL PARA PAPER
+# =============================================================================
+print("\n" + "=" * 70)
+print("8. TABLA RESUMEN FINAL PARA PAPER")
+print("=" * 70)
+
+print(f"""
+╔══════════════════════════════════════════════════════════════════════════╗
+║  TABLA 1. Modelos NB2 — Variable dependiente: ValorInc                  ║
+║  (Errores estándar ML entre paréntesis; * p<.10, ** p<.05, *** p<.01)  ║
+╠═══════════════════╦═══════════════╦═══════════════╦═══════════════╦═════╣
+║ Variable          ║  M-Base       ║  M-Mod Compl. ║  M-Mod R=1   ║ M-Mod R=0 ║
+╠═══════════════════╬═══════════════╬═══════════════╬═══════════════╬════╣""")
+
+rows_paper = [
+    ('DeTech_c',    'DeTech (c)',    [base_all, mod_all, mod_r1, mod_r0]),
+    ('DeTech_c_sq', 'DeTech² (c)',   [base_all, mod_all, mod_r1, mod_r0]),
+    ('SumLog_c',    'SumLog (c)',    [None,     mod_all, mod_r1, mod_r0]),
+    ('SumLog_c_sq', 'SumLog² (c)',   [None,     mod_all, mod_r1, mod_r0]),
+    ('Interaction', 'DeTech×SumLog', [None,     mod_all, mod_r1, mod_r0]),
+    ('Inventores',  'Inventores',    [base_all, mod_all, mod_r1, mod_r0]),
+    ('Experticia',  'Experticia',    [base_all, mod_all, mod_r1, mod_r0]),
+]
+for var, label, mods in rows_paper:
+    row_str = f"║ {label:<17} ║"
+    for m in mods:
+        if m is None:
+            row_str += "  —            ║"
+        else:
+            c = m.params.get(var, np.nan)
+            p = m.pvalues.get(var, np.nan)
+            if np.isnan(c):
+                row_str += "  —            ║"
+            else:
+                row_str += f" {c:>8.4f}{stars(p):<3}    ║"
+    print(row_str)
+
+print("╠═══════════════════╬═══════════════╬═══════════════╬═══════════════╬════╣")
+for metric, label, mods in [
+    ('alpha', 'Dispersión (α)', [base_all, mod_all, mod_r1, mod_r0]),
+]:
+    row_str = f"║ {label:<17} ║"
+    for m in mods:
+        v = m.params.get('alpha', np.nan)
+        row_str += f" {v:>8.4f}       ║"
+    print(row_str)
+
+# AIC y BIC
+for metric_label, attr in [('AIC','aic'),('BIC','bic'),('Pseudo-R²','prsquared')]:
+    row_str = f"║ {metric_label:<17} ║"
+    for m in [base_all, mod_all, mod_r1, mod_r0]:
+        v = getattr(m, attr)
+        row_str += f" {v:>13.2f} ║"
+    print(row_str)
+
+# n
+row_str = f"║ {'n':<17} ║"
+for n_val in [len(df_modelo),
+              len(df_modelo),
+              (df_modelo['Rank']==1).sum(),
+              (df_modelo['Rank']==0).sum()]:
+    row_str += f" {n_val:>13}   ║"
+print(row_str)
+print("╚══════════════════════════════════════════════════════════════════════════╝")
+print("\n  Nota: Variables centradas en su media muestral. ")
+print("  Optimizador: BFGS, maxiter=5000. Método: NB2 MLE.")
+print(f"\n✅ Análisis completo.")
+print(f"📁 Figuras guardadas en: ./{OUTPUT}/")
