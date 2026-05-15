@@ -55,7 +55,7 @@ print("=" * 70)
 print("1. CARGA Y PREPROCESAMIENTO")
 print("=" * 70)
 
-ruta  = "/content/Datos_2026.xlsx"
+ruta  = "/content/ruta.xlsx"
 sheet = "Matriz 1_"
 df    = pd.read_excel(ruta, sheet_name=sheet)
 
