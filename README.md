@@ -1,49 +1,35 @@
-# Hipótesis 2 — Efecto de la Experticia sobre el Valor de la Innovación Conjunta
 
-Esta rama contiene el desarrollo completo de la **Hipótesis 2** de la investigación:
-
-> **La experticia de los colaboradores de la alianza universidad–empresa tiene un efecto en el valor de la innovación conjunta.**
-
-El análisis busca determinar cómo la acumulación de experiencia tecnológica y conocimiento previo influye sobre el desempeño innovador de las alianzas universidad–empresa.
 
 ---
 
-# Objetivo de la hipótesis
+## README 2 – Hipótesis 2 — Efecto de la Experticia sobre el Valor de la Innovación Conjunta)
 
-Evaluar el efecto de la experticia acumulada sobre el valor de la innovación conjunta utilizando modelos econométricos lineales y no lineales.
+```markdown
+# OLS – Stock de Patentes de Inventores vs Valor de la Innovación
 
----
+Modelos de regresión lineal (OLS) para evaluar el efecto del stock acumulado de patentes de los inventores (`Total_Patentes_Inventores`) sobre `ValorInc`, incluyendo controles (`DeTech`, `Experticia`, `Inventores`, `Rank`, `PatenUniv`, `PatenInd`).
 
-# Pregunta de investigación
+## Contenido
+- Cuatro especificaciones: lineal, log‑log, polinómica original, polinómica log‑log.
+- Winsorización al 1% en colas.
+- Errores estándar robustos HC3.
+- Diagnósticos: Breusch‑Pagan, White, Durbin‑Watson, RESET, Jarque‑Bera.
+- Generación de 5 figuras (distribuciones, curva predicha, residuos, barras por decil, panel resumen).
 
-¿El aumento del conocimiento tecnológico acumulado y la experiencia previa de los colaboradores mejora el valor de la innovación o existe un punto de saturación donde el efecto comienza a disminuir?
+## Datos
+- Mismo archivo `Datos_2026.xlsx`, hoja `Matriz 1_`.
+- La variable `Total_Patentes_Inventores` se calcula sumando las patentes de los miembros del equipo.
 
----
+## Metodología
+- Transformación logarítmica de la variable dependiente e independiente principal.
+- Términos polinómicos centrados para evitar multicolinealidad.
+- Comparación de AIC/BIC entre modelos.
 
-# Variables utilizadas
+## Resultados principales
+- Coeficientes significativos y punto de inflexión (U invertida) en el modelo log‑log polinómico.
+- Tabla comparativa de bondad de ajuste.
+- 5 figuras guardadas en `graficas_patentes_con_controles/`.
 
-| Variable | Descripción |
-|---|---|
-| ValorInc | Valor incremental de innovación |
-| DeTech | Distancia tecnológica |
-| DeTech² | Término cuadrático de distancia tecnológica |
-| Rank | Indicador de universidad prestigiosa |
-| Experticia | Experiencia acumulada de colaboradores |
-| Inventores | Número de inventores |
-|PatenUniv| Portafolio tecnológico de la Universidad |
-|PatenInd| Portafolio tecnológico de la empresa |
-
----
-
-# Preparación y procesamiento de datos
-
-Antes de estimar los modelos econométricos se realizaron diferentes procesos de limpieza y preparación de datos:
-
-- Eliminación de inconsistencias.
-- Winsorización al 1% en ambas colas.
-- Transformaciones logarítmicas.
-- Centrado de variables.
-- Validación de distribución.
-- Revisión de valores extremos.
-
----
+## Requisitos
+```bash
+pip install pandas numpy statsmodels matplotlib seaborn scipy openpyxl
