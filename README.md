@@ -24,14 +24,15 @@ Evaluar el efecto de la experticia acumulada sobre el valor de la innovación co
 
 | Variable | Descripción |
 |---|---|
-| ValorInc_w | Valor incremental de innovación (winsorizado) |
-| TPI_w | Stock acumulado de patentes |
-| log_V | Transformación logarítmica de ValorInc |
-| log_P | Transformación logarítmica de TPI |
-| TPI_c | Variable TPI centrada |
-| TPI_c² | Término cuadrático |
-| log_P_c | Variable log centrada |
-| log_P_c² | Término cuadrático logarítmico |
+| ValorInc | Valor incremental de innovación |
+| DeTech | Distancia tecnológica |
+| DeTech² | Término cuadrático de distancia tecnológica |
+| Rank | Indicador de universidad prestigiosa |
+| Experticia | Experiencia acumulada de colaboradores |
+| Inventores | Número de inventores |
+| alpha | Parámetro de dispersión del modelo NB2 |
+|PatenUniv| Portafolio tecnológico de la Universidad |
+|PatenInd| Portafolio tecnológico de la empresa |
 
 ---
 
