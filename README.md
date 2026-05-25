@@ -31,7 +31,8 @@ Evaluar el efecto de la distancia tecnológica (DeTech) sobre el valor increment
 | Experticia | Experiencia acumulada de colaboradores |
 | Inventores | Número de inventores |
 | alpha | Parámetro de dispersión del modelo NB2 |
-
+|PatenUniv| Portafolio tecnológico de la Universidad |
+|PatenInd| Portafolio tecnológico de la empresa |
 ---
 
 # Metodología
