@@ -85,8 +85,8 @@ Incluye scripts para:
 | Experticia | Experiencia acumulada de colaboradores |
 | Rank | Indicador de universidad prestigiosa |
 | Inventores | Número de inventores asociados |
-| PatenUniv | Número de patentes de la universidad |
-|PatenInd | Número de patentes de la empresea |
+|PatenUniv| Portafolio tecnológico de la Universidad |
+|PatenInd| Portafolio tecnológico de la empresa |
 
 ---
 
