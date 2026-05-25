@@ -10,7 +10,7 @@ Análisis de la relación entre diversificación tecnológica (`DeTech`) y el va
 - Generación de 10 gráficas de diagnóstico y resultados.
 
 ## Datos
-- Archivo: `Datos_2026.xlsx`, hoja `Matriz 1_`.
+- Archivo: `Datos_2026_1.xlsx`, hoja `Matriz 1_`.
 - Variables clave: `DeTech`, `ValorInc`, `Rank`, `Experticia`, `Inventores`, `PatenUniv`, `PatenInd`.
 
 ## Metodología
