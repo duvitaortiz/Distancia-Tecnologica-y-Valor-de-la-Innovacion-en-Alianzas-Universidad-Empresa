@@ -1,4 +1,4 @@
-# NB2 – Diversificación Tecnológica y Valor de la Innovación
+# Hipótesis 1: La distancia tecnológica tiene un efecto en forma de U invertida en el valor de la innovación conjunta Universidad–Empresa
 
 Análisis de la relación entre diversificación tecnológica (`DeTech`) y el valor incremental de la innovación (`ValorInc`), utilizando modelos binomiales negativos (NB2) con variables de control (`Experticia`, `Inventores`, `Rank`, `PatenUniv`, `PatenInd`).
 
