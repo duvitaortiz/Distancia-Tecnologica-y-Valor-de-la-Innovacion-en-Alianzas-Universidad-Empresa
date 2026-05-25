@@ -2,9 +2,9 @@
 
 ---
 
-## README 2 – Hipótesis 2 — Efecto de la Experticia sobre el Valor de la Innovación Conjunta)
+## Hipótesis 2 — Efecto de la Experticia sobre el Valor de la Innovación Conjunta)
 
-```markdown
+
 # OLS – Stock de Patentes de Inventores vs Valor de la Innovación
 
 Modelos de regresión lineal (OLS) para evaluar el efecto del stock acumulado de patentes de los inventores (`Total_Patentes_Inventores`) sobre `ValorInc`, incluyendo controles (`DeTech`, `Experticia`, `Inventores`, `Rank`, `PatenUniv`, `PatenInd`).
