@@ -1,47 +1,30 @@
-# Hipótesis 1 — Distancia Tecnológica y Valor de la Innovación Conjunta
+# NB2 – Diversificación Tecnológica y Valor de la Innovación
 
-Esta rama contiene el desarrollo completo de la **Hipótesis 1** de la investigación:
+Análisis de la relación entre diversificación tecnológica (`DeTech`) y el valor incremental de la innovación (`ValorInc`), utilizando modelos binomiales negativos (NB2) con variables de control (`Experticia`, `Inventores`, `Rank`, `PatenUniv`, `PatenInd`).
 
-> : La distancia tecnológica tiene un efecto en forma de U invertida en el valor de la innovación conjunta Universidad–Empresa.
+## Contenido
+- Detección y exclusión de outliers.
+- Transformación logarítmica de `DeTech`.
+- Segmentación por prestigio universitario (`Rank`).
+- Interacciones `Rank × DeTech` y `Experticia × DeTech`.
+- Generación de 10 gráficas de diagnóstico y resultados.
 
-El análisis busca determinar si la diversidad tecnológica entre los colaboradores favorece o limita la generación de innovación de alto valor.
+## Datos
+- Archivo: `Datos_2026.xlsx`, hoja `Matriz 1_`.
+- Variables clave: `DeTech`, `ValorInc`, `Rank`, `Experticia`, `Inventores`, `PatenUniv`, `PatenInd`.
 
----
+## Metodología
+- Modelo NB2 con enlace logarítmico (`loglike_method='nb2'`).
+- Estimación por máxima verosimilitud (BFGS, 5000 iteraciones).
+- Errores estándar robustos.
+- Variables centradas para reducir multicolinealidad.
 
-# Objetivo
+## Resultados principales
+- Tabla comparativa de modelos (base vs moderado, por segmentos de Rank).
+- Punto de inflexión de la U invertida (si aplica).
+- 10 figuras: distribuciones, correlaciones, curvas predichas por nivel del moderador (stock de patentes del equipo), efecto marginal, diagnóstico de residuos, panel resumen.
 
-Evaluar el efecto de la distancia tecnológica (DeTech) sobre el valor incremental de la innovación conjunta universidad–empresa mediante modelos econométricos de conteo.
-
----
-
-# Pregunta de investigación
-
-¿La distancia tecnológica entre universidad y empresa mejora el valor de la innovación o existe un punto óptimo después del cual la colaboración pierde efectividad?
-
----
-
-# Variables utilizadas
-
-| Variable | Descripción |
-|---|---|
-| ValorInc | Valor incremental de innovación |
-| DeTech | Distancia tecnológica |
-| DeTech² | Término cuadrático de distancia tecnológica |
-| Rank | Indicador de universidad prestigiosa |
-| Experticia | Experiencia acumulada de colaboradores |
-| Inventores | Número de inventores |
-| alpha | Parámetro de dispersión del modelo NB2 |
-|PatenUniv| Portafolio tecnológico de la Universidad |
-|PatenInd| Portafolio tecnológico de la empresa |
----
-
-# Metodología
-
-Debido a la naturaleza discreta y sobredispersa de la variable dependiente, se utilizaron modelos:
-
-- Binomial Negativa (NB2)
-- Modelos polinomiales
-- Segmentación por prestigio universitario
-- Análisis de interacción
-- Pruebas de robustez
+## Requisitos
+```bash
+pip install pandas numpy statsmodels matplotlib seaborn scipy openpyxl
 
