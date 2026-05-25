@@ -80,11 +80,13 @@ Incluye scripts para:
 | Variable | Descripción |
 |---|---|
 | DeTech | Distancia tecnológica entre universidad y empresa |
-| ValorInc | Valor incremental de innovación |
+| ValorInc | Valor de innovación conjunta |
 | TPI | Stock acumulado de patentes |
 | Experticia | Experiencia acumulada de colaboradores |
 | Rank | Indicador de universidad prestigiosa |
 | Inventores | Número de inventores asociados |
+| PatenUniv | Número de patentes de la universidad |
+|PatenInd | Número de patentes de la empresea |
 
 ---
 
