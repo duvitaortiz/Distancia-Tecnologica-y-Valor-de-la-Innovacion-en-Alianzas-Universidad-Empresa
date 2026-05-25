@@ -30,7 +30,6 @@ Evaluar el efecto de la experticia acumulada sobre el valor de la innovación co
 | Rank | Indicador de universidad prestigiosa |
 | Experticia | Experiencia acumulada de colaboradores |
 | Inventores | Número de inventores |
-| alpha | Parámetro de dispersión del modelo NB2 |
 |PatenUniv| Portafolio tecnológico de la Universidad |
 |PatenInd| Portafolio tecnológico de la empresa |
 
