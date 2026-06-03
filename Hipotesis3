@@ -60,8 +60,8 @@ df = df.rename(columns={
     '# de inventores': 'Inventores',
     'ValorInc'       : 'ValorInc',
     'Rank'           : 'Rank',
-    'PatenUniv'      : 'PatenUniv',     # nueva variable de control
-    'PatenInd'       : 'PatenInd'       # nueva variable de control
+    'PatenUniv'      : 'PatenUniv',     
+    'PatenInd'       : 'PatenInd'       
 })
 
 # Stock total de patentes del equipo (NaN → 0)
