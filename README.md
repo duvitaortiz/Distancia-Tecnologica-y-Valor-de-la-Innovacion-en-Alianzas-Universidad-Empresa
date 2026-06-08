@@ -4,7 +4,7 @@
 
 # NB2 – Moderación del Stock de Patentes del Equipo en la Relación DeTech-ValorInc
 
-Modelos binomiales negativos para analizar si el stock acumulado de patentes del equipo (`SumPatents`) modera la relación entre diversificación tecnológica (`DeTech`) y valor incremental (`ValorInc`), controlando por `Experticia`, `Inventores`, `Rank`, `PatenUniv`, `PatenInd`.
+Modelos binomiales negativos para analizar si el stock acumulado de patentes del equipo (`SumPatents`) modera la relación entre diversificación tecnológica (`DeTech`) y valor de la innovación conjunta (`ValorInc`), controlando por `Experticia`, `Inventores`, `Rank`, `PatenUniv`, `PatenInd`.
 
 ## Contenido
 - Modelo base (sin moderador) y modelo moderado (con `SumLog`, `SumLog²` e interacción `DeTech×SumLog`).
